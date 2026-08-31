@@ -1,0 +1,112 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - native-touch-restore-pattern
+      - 'release/**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        shell: cmd
+        run: scripts\build.bat
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/zzz-touch-unlocker.exe) -or
+              -not (Test-Path dist/zzz-touch-hook.dll)) {
+            throw 'Build outputs were not found in dist.'
+          }
+
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item dist/zzz-touch-unlocker.exe package/zzz-touch-unlocker.exe
+          Copy-Item dist/zzz-touch-hook.dll package/zzz-touch-hook.dll
+          Copy-Item README.md package/README.md
+          Copy-Item README_zh_CN.md package/README_zh_CN.md
+
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $label = $env:GITHUB_REF_NAME
+          } elseif ($env:GITHUB_REF_NAME.StartsWith('release/')) {
+            $label = $env:GITHUB_REF_NAME.Substring(8)
+          } else {
+            $label = "ci-$env:GITHUB_RUN_NUMBER"
+          }
+
+          $zip = "zzz-touch-unlocker-$label-win64.zip"
+          Compress-Archive -Path package/* -DestinationPath $zip -Force
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzz-touch-unlocker-win64
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/release/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zzz-touch-unlocker-win64
+          path: release-assets
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+            prerelease=false
+          else
+            tag="${GITHUB_REF_NAME#release/}"
+            prerelease=true
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" \
+              -f sha="$GITHUB_SHA"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          args=(
+            "$RELEASE_TAG"
+            release-assets/*.zip
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "zzz-touch-unlocker $RELEASE_TAG"
+            --generate-notes
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
