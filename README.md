@@ -4,9 +4,9 @@
 
 Native touch and mobile UI support for **Zenless Zone Zero on Windows**.
 
-The tool restores the game's native Windows touch path, enables the native mobile UI and touch controls, and keeps the saved PC layout preference unchanged. Runtime targets are located with semantic patterns instead of fixed version RVAs.
+The tool restores the game's native Windows touch path, enables the native mobile UI and touch controls, and selects the desktop or mobile layout from a launch option. Runtime targets are located with semantic patterns instead of fixed version RVAs.
 
-Verified on **Zenless Zone Zero 3.1.0**.
+Updated for **Zenless Zone Zero 3.2**: the incompatible save hook has been removed, and a launch option now forces the selected layout. Offline pattern checks against the local game files, compilation, and argument checks have passed; in-game behavior still needs validation. The earlier mobile implementation was verified on **3.1.0**.
 
 ## Download and use
 
@@ -23,6 +23,39 @@ Close the game, then **run `zzz-touch-unlocker.exe` as administrator**.
 zzz-touch-unlocker.exe
 ```
 
+### Mode options and defaults
+
+**Double-clicking the launcher or running without arguments is equivalent to `-m 1`: mobile layout with native touch input restored.**
+
+| Option | Behavior | Default |
+| --- | --- | --- |
+| `-m 0` | Force desktop layout and preserve the game's default input backend | — |
+| `-m 1` | Force mobile layout with native touch input, virtual joystick and touch UI | Yes |
+| `--mode 0` / `--mode 1` | Equivalent to `-m 0` / `-m 1` | `1` |
+| `--game "path"` | Specify the game executable | See the default path below |
+| `--help` / `-h` | Show usage help | — |
+
+```bat
+rem Desktop mode
+zzz-touch-unlocker.exe -m 0
+
+rem Mobile mode (default)
+zzz-touch-unlocker.exe -m 1
+
+rem Equivalent long option
+zzz-touch-unlocker.exe --mode 1
+```
+
+The mode accepts only `0` or `1`. A missing or invalid value produces an error. Close the game before restarting with a different mode.
+
+To enter desktop mode by double-clicking, create a launcher shortcut and append ` -m 0` to its Target, for example:
+
+```text
+"C:\zzz-touch-unlocker\zzz-touch-unlocker.exe" -m 0
+```
+
+### Game path
+
 The default game path is:
 
 ```text
@@ -32,7 +65,7 @@ C:\Program Files\miHoYo Launcher\games\ZenlessZoneZero Game\ZenlessZoneZero.exe
 For another installation path:
 
 ```bat
-zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe"
+zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe" -m 1
 ```
 
 The launcher starts the game suspended, loads the hook DLL, applies the early runtime changes, and then resumes the game.
@@ -44,7 +77,6 @@ Requirements:
 - Windows x64
 - Visual Studio 2022 or newer with Desktop development with C++
 - CMake
-- Git
 
 Run:
 
@@ -52,7 +84,7 @@ Run:
 scripts\build.bat
 ```
 
-The script automatically fetches **MinHook v1.3.4** when needed, configures an x64 Release build, builds the project, and copies the runtime files to:
+The script configures an x64 Release build, builds the project, and copies the runtime files to:
 
 ```text
 dist\zzz-touch-unlocker.exe
@@ -62,7 +94,6 @@ dist\zzz-touch-hook.dll
 Equivalent manual build:
 
 ```bat
-git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git third_party/MinHook
 cmake -S . -B build -A x64
 cmake --build build --config Release --parallel
 ```
@@ -71,9 +102,11 @@ GitHub Actions also builds the project automatically. Pushing a tag such as `v0.
 
 ## How it works
 
-The runtime performs three operations.
+The runtime performs two operations.
 
 ### 1. Restore native touch input
+
+Only mobile mode changes the input backend; desktop mode preserves the game's default input behavior.
 
 ZZZ enables both Unity's New and Legacy Windows input backends. For native `WM_TOUCH`, the New backend consumes the touch handle before the Legacy backend can use it.
 
@@ -93,29 +126,18 @@ WM_TOUCH
   -> ZZZ touch handling
 ```
 
-### 2. Enable the mobile UI
+### 2. Force the selected layout
 
-The hook locates ZZZ's effective `LocalUILayoutPlatform` access and sets the live value to:
+A pattern locates the effective `LocalUILayoutPlatform` access. The runtime patch overrides both the field and the return value:
 
-```text
-LocalUILayoutPlatform = 1   // Mobile
-```
+| Option | Internal game value | Layout |
+| --- | --- | --- |
+| `-m 0` | `2` | Desktop |
+| `-m 1` (default) | `1` | Mobile, virtual joystick and touch UI |
 
-This enables the game's native mobile UI, virtual joystick and touch controls.
+Each execution of this access uses the selected mode independently of the saved layout. Runtime memory patches remain, but serialization and saving are no longer intercepted, and MinHook is no longer required.
 
-### 3. Preserve the saved PC layout
-
-The live layout value must remain Mobile while the game is running, but saving that value normally would change the persisted layout preference.
-
-A narrow serializer hook temporarily exposes the original layout value only while `GeneralLocalDataItem` is being serialized, then restores the live Mobile value immediately afterward.
-
-```text
-runtime:       Mobile (1)
-serialization: original saved value
-runtime:       Mobile (1)
-```
-
-The game continues to perform its normal save operation.
+The game saves normally and may persist the selected layout. On the next launch through this launcher, `-m` takes precedence again. Launching the game directly may still use the saved layout.
 
 ## Compatibility
 
@@ -133,7 +155,6 @@ See [docs/version-compatibility.md](docs/version-compatibility.md) for details.
 
 - [winTEuser/Genshin_StarRail_fps_unlocker](https://github.com/winTEuser/Genshin_StarRail_fps_unlocker)
 - [fffonion/ZZZConfigManager](https://github.com/fffonion/ZZZConfigManager)
-- [TsudaKageyu/minhook](https://github.com/TsudaKageyu/minhook)
 
 ## Disclaimer
 

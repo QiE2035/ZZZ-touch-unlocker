@@ -144,33 +144,18 @@ def audit_gameassembly(pe: PE) -> bool:
         "E8 ?? ?? ?? ?? 48 85 C0 0F 84 ?? ?? ?? ?? "
         "8B 40 ?? 85 C0 0F 4F F0 89 F0 48 83 C4 20 5B 5F 5E C3"
     )
-    save_pattern = (
-        "48 89 45 E8 E8 ?? ?? ?? ?? 48 8B 4D E8 48 8B 51 20 "
-        "49 89 C0 E8 ?? ?? ?? ?? 48 8B 75 E8 C6 46 41 00"
-    )
-
     layouts = find_pattern(data, layout_pattern)
-    saves = find_pattern(data, save_pattern)
     print(f"GameAssembly layout locator matches: {len(layouts)}")
-    print(f"GameAssembly save locator matches:   {len(saves)}")
-    if len(layouts) != 1 or len(saves) != 1:
+    if len(layouts) != 1:
         return False
 
     layout_hit = base + layouts[0]
     layout_target = layout_hit + 14
     field = pe.rva_bytes(layout_target, 3)[2]
 
-    save_context = base + saves[0]
-    callsite = save_context + 4
-    call = pe.rva_bytes(callsite, 5)
-    serializer = callsite + 5 + i32(call, 1)
-
     print(f"  layout apply RVA:      0x{layout_target:X}")
     print(f"  layout field offset:   0x{field:X}")
-    print(f"  save callsite RVA:     0x{callsite:X}")
-    print(f"  serializer RVA:        0x{serializer:X}")
-    print(f"  serializer return RVA: 0x{callsite + 5:X}")
-    return True
+    return 0x20 <= field <= 0x7C and field % 4 == 0
 
 
 def main() -> int:

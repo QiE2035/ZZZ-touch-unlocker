@@ -5,7 +5,7 @@
 
 namespace zzz::layout_override {
 
-bool ArmEarlyMobileUi();
+bool ArmEarlyUi(int layout);
 bool FinalizeRuntime(DWORD timeout_ms);
 uint32_t LayoutFieldOffset();
 

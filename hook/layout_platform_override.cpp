@@ -37,6 +37,7 @@ enum class PatchState : int {
 std::atomic<PatchState> g_state{PatchState::Idle};
 std::atomic<uintptr_t> g_applyAddress{0};
 std::atomic<uint32_t> g_fieldOffset{0};
+uint8_t g_layout = 1;  // Set before the notification is registered.
 void* g_dllNotifyCookie = nullptr;
 
 using NtStatus = LONG;
@@ -86,9 +87,9 @@ void MakeOriginal(uint8_t field, uint8_t out[10]) {
     std::memcpy(out, bytes, sizeof(bytes));
 }
 
-void MakeMobile(uint8_t field, uint8_t out[10]) {
+void MakeLayout(uint8_t field, uint8_t out[10]) {
     const uint8_t bytes[10] = {
-        0xC7, 0x40, field, 0x01, 0x00, 0x00, 0x00, 0x6A, 0x01, 0x58
+        0xC7, 0x40, field, g_layout, 0x00, 0x00, 0x00, 0x6A, g_layout, 0x58
     };
     std::memcpy(out, bytes, sizeof(bytes));
 }
@@ -163,9 +164,9 @@ PatchState TryPatch(HMODULE ga) {
                                       : PatchState::SignatureMismatch;
 
     uint8_t original[10]{};
-    uint8_t mobile[10]{};
+    uint8_t selected[10]{};
     MakeOriginal(loc.fieldOffset, original);
-    MakeMobile(loc.fieldOffset, mobile);
+    MakeLayout(loc.fieldOffset, selected);
 
     g_applyAddress.store(loc.target, std::memory_order_release);
     g_fieldOffset.store(loc.fieldOffset, std::memory_order_release);
@@ -176,7 +177,7 @@ PatchState TryPatch(HMODULE ga) {
 
     if (!BytesEqual(loc.target, original, sizeof(original)))
         return PatchState::SignatureMismatch;
-    if (!WriteBytes(loc.target, mobile, sizeof(mobile)))
+    if (!WriteBytes(loc.target, selected, sizeof(selected)))
         return PatchState::ProtectFailed;
     return PatchState::Patched;
 }
@@ -218,7 +219,8 @@ void UnregisterNotification() {
 
 }  // namespace
 
-bool ArmEarlyMobileUi() {
+bool ArmEarlyUi(int layout) {
+    if (layout != 1 && layout != 2) return false;
     PatchState expected = PatchState::Idle;
     if (!g_state.compare_exchange_strong(expected, PatchState::Armed,
             std::memory_order_acq_rel)) {
@@ -227,7 +229,9 @@ bool ArmEarlyMobileUi() {
                current == PatchState::Patched;
     }
 
-    LOG_INFO("UIR_LAYOUT_OVERRIDE_ARMING target=MOBILE locator=PATTERN_ONLY");
+    g_layout = static_cast<uint8_t>(layout);
+    LOG_INFO("UIR_LAYOUT_OVERRIDE_ARMING target=%s locator=PATTERN_ONLY",
+             layout == 1 ? "MOBILE" : "DESKTOP");
     if (HMODULE ga = GetModuleHandleW(L"GameAssembly.dll")) {
         const PatchState state = TryPatchOnce(ga);
         return state == PatchState::Patching || state == PatchState::Patched;
@@ -283,9 +287,9 @@ bool FinalizeRuntime(DWORD timeout_ms) {
 
     const uintptr_t target = g_applyAddress.load(std::memory_order_acquire);
     const uint32_t field = g_fieldOffset.load(std::memory_order_acquire);
-    uint8_t mobile[10]{};
-    MakeMobile(static_cast<uint8_t>(field), mobile);
-    if (!target || !field || !BytesEqual(target, mobile, sizeof(mobile))) return false;
+    uint8_t selected[10]{};
+    MakeLayout(static_cast<uint8_t>(field), selected);
+    if (!target || !field || !BytesEqual(target, selected, sizeof(selected))) return false;
 
     UnregisterNotification();
     LOG_INFO("UIR_LAYOUT_READY applyRva=0x%llX fieldOffset=0x%X locator=PATTERN_ONLY",

@@ -4,9 +4,9 @@
 
 为 **Windows 版《绝区零》**恢复原生触摸输入和移动端 UI。
 
-本工具恢复游戏原本的 Windows 原生触摸链路，启用原生移动端 UI、虚拟摇杆和触控操作，同时保持磁盘中原有的 PC 布局设置不变。运行时目标通过语义 Pattern 定位，不依赖固定版本 RVA 表。
+本工具恢复游戏原本的 Windows 原生触摸链路，启用原生移动端 UI、虚拟摇杆和触控操作，通过启动参数选择桌面或移动布局。运行时目标通过语义 Pattern 定位，不依赖固定版本 RVA 表。
 
-已在 **绝区零 3.1.0** 验证。
+已针对 **绝区零 3.2** 完成适配修改：移除新版中失效的保存 hook，改为通过启动参数强制选择布局。当前已通过本机游戏文件的离线特征检查、编译和参数检查，游戏内效果仍待验证。旧版移动端实现曾在 **3.1.0** 验证。
 
 ## 下载与使用
 
@@ -23,6 +23,39 @@ zzz-touch-hook.dll
 zzz-touch-unlocker.exe
 ```
 
+### 模式参数与默认行为
+
+**直接双击或不带参数运行，等同于 `-m 1`：启用移动端布局，并恢复原生触摸输入。**
+
+| 参数 | 作用 | 默认值 |
+| --- | --- | --- |
+| `-m 0` | 强制桌面布局，保留游戏默认输入后端 | — |
+| `-m 1` | 强制移动布局，启用原生触摸输入、虚拟摇杆和触控 UI | 是 |
+| `--mode 0` / `--mode 1` | 与 `-m 0` / `-m 1` 等价 | `1` |
+| `--game "路径"` | 指定游戏可执行文件 | 见下方默认路径 |
+| `--help` / `-h` | 显示使用帮助 | — |
+
+```bat
+rem 桌面模式
+zzz-touch-unlocker.exe -m 0
+
+rem 移动模式（默认）
+zzz-touch-unlocker.exe -m 1
+
+rem 等价的长参数写法
+zzz-touch-unlocker.exe --mode 1
+```
+
+模式只接受 `0` 或 `1`，缺少值或其他值会报错。切换模式前请先关闭游戏，再使用对应参数重新启动。
+
+如需双击进入桌面模式，可创建启动器的快捷方式，在其“目标”末尾添加 ` -m 0`，例如：
+
+```text
+"C:\zzz-touch-unlocker\zzz-touch-unlocker.exe" -m 0
+```
+
+### 游戏路径
+
 默认游戏路径为：
 
 ```text
@@ -32,7 +65,7 @@ C:\Program Files\miHoYo Launcher\games\ZenlessZoneZero Game\ZenlessZoneZero.exe
 如果游戏安装在其他位置：
 
 ```bat
-zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe"
+zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe" -m 1
 ```
 
 启动器会先以 suspended 状态创建游戏进程，加载 hook DLL，完成早期运行时修改后再恢复游戏运行。
@@ -44,7 +77,6 @@ zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe
 - Windows x64
 - Visual Studio 2022 或更新版本，并安装“使用 C++ 的桌面开发”
 - CMake
-- Git
 
 直接运行：
 
@@ -52,7 +84,7 @@ zzz-touch-unlocker.exe --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe
 scripts\build.bat
 ```
 
-脚本会在需要时自动拉取 **MinHook v1.3.4**，配置 x64 Release 构建，完成编译并将运行文件复制到：
+脚本配置 x64 Release 构建，完成编译并将运行文件复制到：
 
 ```text
 dist\zzz-touch-unlocker.exe
@@ -62,7 +94,6 @@ dist\zzz-touch-hook.dll
 等价的手动编译方式：
 
 ```bat
-git clone --depth 1 --branch v1.3.4 https://github.com/TsudaKageyu/minhook.git third_party/MinHook
 cmake -S . -B build -A x64
 cmake --build build --config Release --parallel
 ```
@@ -71,9 +102,11 @@ cmake --build build --config Release --parallel
 
 ## 实现原理
 
-运行时只进行三项核心操作。
+运行时进行两项核心操作。
 
 ### 1. 恢复原生触摸输入
+
+仅在移动模式下修改输入后端；桌面模式保留游戏默认输入行为。
 
 绝区零同时启用了 Unity 的 New 和 Legacy Windows 输入后端。对于原生 `WM_TOUCH`，New 后端会先消费触摸句柄，使 Legacy 后端无法继续处理同一个触摸输入。
 
@@ -93,29 +126,18 @@ WM_TOUCH
   -> 绝区零原生触摸逻辑
 ```
 
-### 2. 启用移动端 UI
+### 2. 按参数强制布局
 
-Hook 会定位绝区零实际使用的 `LocalUILayoutPlatform` 读取逻辑，并将运行时值设为：
+通过 Pattern 定位 `LocalUILayoutPlatform` 读取逻辑，在运行时覆盖字段和返回值：
 
-```text
-LocalUILayoutPlatform = 1   // Mobile
-```
+| 参数 | 游戏内部布局值 | 布局 |
+| --- | --- | --- |
+| `-m 0` | `2` | 桌面 |
+| `-m 1`（默认） | `1` | 移动、虚拟摇杆和触控 UI |
 
-这样可以启用游戏原生的移动端 UI、虚拟摇杆和触控操作。
+每次执行该读取路径都会采用本次选择，不依赖已保存的布局。仍使用内存补丁，但不再拦截序列化或保存流程，也不再依赖 MinHook。
 
-### 3. 保持已保存的 PC 布局设置
-
-游戏运行期间需要让布局值持续保持为 Mobile，但如果直接按这个值保存，会把磁盘中的布局设置也改成移动端。
-
-因此在 `GeneralLocalDataItem` 序列化时使用一个很窄的 serializer hook：仅在序列化窗口中临时暴露原来的保存值，序列化完成后立即恢复运行时的 Mobile 值。
-
-```text
-运行时：       Mobile (1)
-序列化时：     原来的保存值
-序列化完成：   Mobile (1)
-```
-
-实际文件保存仍由游戏自己的正常保存流程完成。
+游戏自行保存设置，可能保存本次布局；下次通过启动器启动时仍以 `-m` 为准。直接启动游戏时，已保存的布局仍可能影响游戏。
 
 ## 版本兼容
 
@@ -133,7 +155,6 @@ python scripts\audit_compat_patterns.py <UnityPlayer.dll> <GameAssembly.dll>
 
 - [winTEuser/Genshin_StarRail_fps_unlocker](https://github.com/winTEuser/Genshin_StarRail_fps_unlocker)
 - [fffonion/ZZZConfigManager](https://github.com/fffonion/ZZZConfigManager)
-- [TsudaKageyu/minhook](https://github.com/TsudaKageyu/minhook)
 
 ## 免责声明
 

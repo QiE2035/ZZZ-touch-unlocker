@@ -11,6 +11,7 @@ constexpr wchar_t kDefaultGamePath[] =
 
 struct Options {
     std::wstring game = kDefaultGamePath;
+    int mode = 1;
 };
 
 void PrintUsage() {
@@ -18,12 +19,22 @@ void PrintUsage() {
     wprintf(L"Usage:\n");
     wprintf(L"  zzz-touch-unlocker.exe\n");
     wprintf(L"  zzz-touch-unlocker.exe --game \"C:\\path\\ZenlessZoneZero.exe\"\n\n");
+    wprintf(L"  -m, --mode 0|1  Desktop (0) or mobile (1, default)\n\n");
     wprintf(L"Default game:\n  %ls\n", kDefaultGamePath);
 }
 
 bool ParseArgs(int argc, wchar_t** argv, Options& out) {
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
+        if (arg == L"-m" || arg == L"--mode") {
+            if (i + 1 >= argc || (std::wstring(argv[i + 1]) != L"0" &&
+                                  std::wstring(argv[i + 1]) != L"1")) {
+                wprintf(L"ERROR: mode must be 0 (desktop) or 1 (mobile).\n");
+                return false;
+            }
+            out.mode = argv[++i][0] - L'0';
+            continue;
+        }
         if (arg == L"--game") {
             if (i + 1 >= argc) return false;
             out.game = argv[++i];
@@ -185,5 +196,11 @@ int wmain(int argc, wchar_t** argv) {
     wprintf(L"zzz-touch-unlocker\n");
     wprintf(L"  game    = %ls\n", opt.game.c_str());
     wprintf(L"  locator = PATTERN_ONLY\n");
+    wprintf(L"  mode    = %d (%ls)\n", opt.mode, opt.mode ? L"mobile" : L"desktop");
+    // Process-local environment inherited by the suspended child and its DLL.
+    if (!SetEnvironmentVariableW(L"ZZZ_TOUCH_MODE", opt.mode ? L"1" : L"0")) {
+        wprintf(L"ERROR: cannot pass mode to game: %lu\n", GetLastError());
+        return 3;
+    }
     return LaunchSuspendedAndInject(opt.game, dllPath) ? 0 : 3;
 }

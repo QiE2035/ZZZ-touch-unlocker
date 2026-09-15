@@ -1,7 +1,6 @@
 // touch_hook.cpp — pattern-only native-touch runtime initialization.
 #include "touch_hook.h"
 
-#include "general_data_persistence_guard.h"
 #include "layout_platform_override.h"
 #include "legacy_touch_restore.h"
 #include "logger.h"
@@ -31,8 +30,18 @@ void Run(const std::wstring& unlocker_dir) {
     LOG_INFO("zzz-touch-hook starting (pattern-only)");
     LOG_INFO("=========================================");
 
-    const bool inputArmed = zzz::legacy::ArmEarlyRestore();
-    const bool layoutArmed = zzz::layout_override::ArmEarlyMobileUi();
+    wchar_t mode[2]{};
+    const DWORD length = GetEnvironmentVariableW(L"ZZZ_TOUCH_MODE", mode, 2);
+    if (length != 1 || (mode[0] != L'0' && mode[0] != L'1')) {
+        LOG_ERROR("NTR_ABORT missing/invalid launcher mode");
+        return;
+    }
+    const bool mobile = mode[0] == L'1';
+    const int layout = mobile ? 1 : 2;  // Game enum: Mobile=1, PC=2.
+    LOG_INFO("NTR_MODE mode=%d target=%s liveLayoutPlatform=%d",
+             mobile ? 1 : 0, mobile ? "MOBILE" : "DESKTOP", layout);
+    const bool inputArmed = !mobile || zzz::legacy::ArmEarlyRestore();
+    const bool layoutArmed = zzz::layout_override::ArmEarlyUi(layout);
     if (!inputArmed || !layoutArmed) {
         LOG_ERROR("NTR_ABORT early override arm failed input=%d layout=%d",
                   inputArmed ? 1 : 0, layoutArmed ? 1 : 0);
@@ -40,25 +49,21 @@ void Run(const std::wstring& unlocker_dir) {
     }
     SignalLauncherReady();
 
-    // Establish the live layout and its persistence guard as early as possible.
+    // Establish the selected layout independently of saved preferences.
     if (!zzz::layout_override::FinalizeRuntime(60 * 1000)) {
         LOG_ERROR("NTR_ABORT layout finalize failed");
         return;
     }
-    if (!zzz::persistence_guard::Install(60 * 1000)) {
-        LOG_ERROR("NTR_ABORT persistence guard install failed");
-        return;
-    }
-
     // Legacy manager validation completes after Unity's main thread resumes.
-    if (!zzz::legacy::FinalizeRuntime(60 * 1000)) {
+    if (mobile && !zzz::legacy::FinalizeRuntime(60 * 1000)) {
         LOG_ERROR("NTR_ABORT input finalize failed");
         return;
     }
 
-    LOG_INFO("NTR_READY touchInput=LEGACY_NATIVE liveLayoutPlatform=1 "
-             "persistPolicy=FIRST_OBSERVED locators=PATTERN_ONLY "
+    LOG_INFO("NTR_READY touchInput=%s liveLayoutPlatform=%d "
+             "persistPolicy=GAME_DEFAULT locators=PATTERN_ONLY "
              "layoutFieldOffset=0x%X fileMutationByUnlocker=NONE",
+             mobile ? "LEGACY_NATIVE" : "GAME_DEFAULT", layout,
              static_cast<unsigned>(zzz::layout_override::LayoutFieldOffset()));
 }
 

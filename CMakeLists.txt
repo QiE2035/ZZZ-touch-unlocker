@@ -28,24 +28,11 @@ else()
                             UNICODE _UNICODE)
 endif()
 
-add_library(minhook STATIC
-    third_party/MinHook/src/buffer.c
-    third_party/MinHook/src/hook.c
-    third_party/MinHook/src/trampoline.c
-    third_party/MinHook/src/hde/hde64.c
-)
-target_include_directories(minhook PUBLIC third_party/MinHook/include)
-target_compile_definitions(minhook PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)
-if(NOT MSVC)
-    target_compile_options(minhook PRIVATE -Wno-unused-parameter)
-endif()
-
 add_library(zzz_touch_hook SHARED
     hook/dllmain.cpp
     hook/touch_hook.cpp
     hook/legacy_input_switch.cpp
     hook/layout_platform_override.cpp
-    hook/general_data_persistence_guard.cpp
     hook/logger.cpp
     hook/patterns.cpp
 )
@@ -54,7 +41,7 @@ set_target_properties(zzz_touch_hook PROPERTIES
     OUTPUT_NAME "zzz-touch-hook"
 )
 target_include_directories(zzz_touch_hook PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hook)
-target_link_libraries(zzz_touch_hook PRIVATE minhook kernel32)
+target_link_libraries(zzz_touch_hook PRIVATE kernel32)
 
 add_executable(zzz_touch_unlocker launcher/main.cpp)
 set_target_properties(zzz_touch_unlocker PROPERTIES OUTPUT_NAME "zzz-touch-unlocker")
