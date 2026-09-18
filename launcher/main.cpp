@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -12,6 +13,7 @@ constexpr wchar_t kDefaultGamePath[] =
 struct Options {
     std::wstring game = kDefaultGamePath;
     int mode = 1;
+    std::vector<std::wstring> gameArgs;
 };
 
 void PrintUsage() {
@@ -20,12 +22,18 @@ void PrintUsage() {
     wprintf(L"  zzz-touch-unlocker.exe\n");
     wprintf(L"  zzz-touch-unlocker.exe --game \"C:\\path\\ZenlessZoneZero.exe\"\n\n");
     wprintf(L"  -m, --mode 0|1  Desktop (0) or mobile (1, default)\n\n");
+    wprintf(L"Other arguments are forwarded to the game in order.\n");
+    wprintf(L"Use -- to forward all remaining arguments literally.\n\n");
     wprintf(L"Default game:\n  %ls\n", kDefaultGamePath);
 }
 
 bool ParseArgs(int argc, wchar_t** argv, Options& out) {
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
+        if (arg == L"--") {
+            while (++i < argc) out.gameArgs.emplace_back(argv[i]);
+            break;
+        }
         if (arg == L"-m" || arg == L"--mode") {
             if (i + 1 >= argc || (std::wstring(argv[i + 1]) != L"0" &&
                                   std::wstring(argv[i + 1]) != L"1")) {
@@ -44,10 +52,35 @@ bool ParseArgs(int argc, wchar_t** argv, Options& out) {
             PrintUsage();
             ExitProcess(0);
         }
-        wprintf(L"ERROR: unknown argument: %ls\n", arg.c_str());
-        return false;
+        out.gameArgs.push_back(arg);
     }
     return true;
+}
+
+// Windows argv quoting: double backslashes before quotes and the closing quote.
+// Always quote so empty arguments and whitespace survive CreateProcessW.
+std::wstring QuoteArgument(const std::wstring& arg) {
+    std::wstring result = L"\"";
+    size_t slashes = 0;
+    for (wchar_t c : arg) {
+        if (c == L'\\') {
+            ++slashes;
+            continue;
+        }
+        result.append(c == L'"' ? slashes * 2 + 1 : slashes, L'\\');
+        result += c;
+        slashes = 0;
+    }
+    result.append(slashes * 2, L'\\');
+    result += L'"';
+    return result;
+}
+
+std::wstring BuildGameCommandLine(const std::wstring& gamePath,
+                                const std::vector<std::wstring>& args) {
+    std::wstring command = QuoteArgument(gamePath);
+    for (const auto& arg : args) command += L" " + QuoteArgument(arg);
+    return command;
 }
 
 std::wstring GetExeDir() {
@@ -126,8 +159,9 @@ bool InjectDll(HANDLE process, const std::wstring& dllPath) {
 }
 
 bool LaunchSuspendedAndInject(const std::wstring& gamePath,
-                              const std::wstring& dllPath) {
-    std::wstring cmdline = L"\"" + gamePath + L"\"";
+                              const std::wstring& dllPath,
+                              const std::vector<std::wstring>& gameArgs) {
+    std::wstring cmdline = BuildGameCommandLine(gamePath, gameArgs);
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
@@ -202,5 +236,5 @@ int wmain(int argc, wchar_t** argv) {
         wprintf(L"ERROR: cannot pass mode to game: %lu\n", GetLastError());
         return 3;
     }
-    return LaunchSuspendedAndInject(opt.game, dllPath) ? 0 : 3;
+    return LaunchSuspendedAndInject(opt.game, dllPath, opt.gameArgs) ? 0 : 3;
 }

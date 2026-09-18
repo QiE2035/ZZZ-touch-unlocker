@@ -54,6 +54,39 @@ To enter desktop mode by double-clicking, create a launcher shortcut and append 
 "C:\zzz-touch-unlocker\zzz-touch-unlocker.exe" -m 0
 ```
 
+### Forward game launch arguments
+
+Arguments other than the launcher's own `-m` / `--mode`, `--game`, and help options are forwarded to the game in order. For example:
+
+```bat
+zzz-touch-unlocker.exe -m 0 -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -monitor 1
+```
+
+The launcher selects desktop mode and passes the resolution, fullscreen, and monitor options to the game. Whether these options take effect depends on the game's support.
+
+Use `--` to forward all remaining arguments, including names that overlap with launcher options. The separator itself is not forwarded. Place launcher options before it:
+
+```bat
+zzz-touch-unlocker.exe -m 0 -- -screen-width 1920 -screen-height 1080
+```
+
+Quote values containing spaces, for example `-logFile "D:\Game Logs\zzz.log"`. Spaces, quotes, and backslashes within argument values are preserved when forwarding.
+
+### Use with ZenlessZoneZero-OneDragon
+
+Launch argument forwarding supports [ZenlessZoneZero-OneDragon](https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon):
+
+1. In OneDragon, select `zzz-touch-unlocker.exe` as the game path.
+2. Add `-m 0` to the advanced arguments to always launch in desktop mode.
+
+Resolution, fullscreen, monitor, and other launch arguments added by OneDragon are forwarded to the game. Keep `zzz-touch-hook.dll` in the same directory as the launcher.
+
+If the game is not installed at the default path, also specify its actual executable in the advanced arguments, for example:
+
+```text
+-m 0 --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe"
+```
+
 ### Game path
 
 The default game path is:

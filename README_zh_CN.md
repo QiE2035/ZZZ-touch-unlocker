@@ -54,6 +54,39 @@ zzz-touch-unlocker.exe --mode 1
 "C:\zzz-touch-unlocker\zzz-touch-unlocker.exe" -m 0
 ```
 
+### 透传游戏启动参数
+
+除启动器自身的 `-m` / `--mode`、`--game` 和帮助参数外，其余参数按原顺序传给游戏。例如：
+
+```bat
+zzz-touch-unlocker.exe -m 0 -screen-width 1920 -screen-height 1080 -screen-fullscreen 0 -monitor 1
+```
+
+启动器使用桌面模式，并将后面的分辨率、全屏和显示器参数传给游戏。参数是否生效取决于游戏本身的支持情况。
+
+如需把与启动器同名的参数也传给游戏，可使用 `--` 分隔；`--` 本身不会传递，其后所有参数均传给游戏。启动器参数应放在分隔符之前：
+
+```bat
+zzz-touch-unlocker.exe -m 0 -- -screen-width 1920 -screen-height 1080
+```
+
+带空格的参数值请用双引号括起来，例如 `-logFile "D:\Game Logs\zzz.log"`。参数值中的空格、引号和反斜杠会在传递时保留。
+
+### 配合绝区零一条龙使用
+
+已适配 [ZenlessZoneZero-OneDragon（绝区零一条龙）](https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon) 的启动参数透传：
+
+1. 在一条龙中，将游戏路径选择为 `zzz-touch-unlocker.exe`。
+2. 在高级参数中添加 `-m 0`，即可固定按桌面版启动。
+
+一条龙附加的分辨率、全屏和显示器等启动参数会继续传给游戏。请保持 `zzz-touch-hook.dll` 与启动器在同一目录。
+
+如果游戏不在默认安装路径，还需在高级参数中指定实际游戏路径，例如：
+
+```text
+-m 0 --game "D:\Games\ZenlessZoneZero Game\ZenlessZoneZero.exe"
+```
+
 ### 游戏路径
 
 默认游戏路径为：
